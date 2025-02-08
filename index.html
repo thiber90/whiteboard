@@ -57,16 +57,23 @@
             }
         }
 
-        class Ellipse {
+        class Ellipse extends Form {
+                constructor(id, center, a, b, angle, borderColor, borderWidth, fillColor, inMotion, type) {
+                    super(id, [center], borderColor, borderWidth, fillColor, inMotion, type);
+                    this.a = a;
+                    this.b = b;
+                    this.angle = angle;
+                }
 
-            constructor(id, origin, a, b, angle) {
-                this.id = id;
-                this.origin;
-                this.a;
-                this.b;
-                this.angle;
+                    // Method to clone the Ellipse object while setting inMotion to true
+    cloneInMotion() {
+        const centerCopy = { x: this.points[0].x, y: this.points[0].y };
+        return new Ellipse(this.id, centerCopy, this.a, this.b, this.angle, this.borderColor, this.borderWidth, this.fillColor, true, this.type);
+    }
+
+
+                // Additional methods specific to Ellipse can be added here
             }
-        }
 
         function calculateAngleBetweenLines(origin, point1, point2) {
             // Calculate the vectors
@@ -101,17 +108,19 @@
         }
 
         function rotateForm(form, angle) {
+            if(form.type==='ellipse'){
+                form.angle=form.angle+angle * Math.PI / 180;
+            } else {
             const center = getMiddlePoint(form);
             const cx = center.x;
             const cy = center.y;
             const rotatedPoints = form.points.map(point => rotatePoint(cx, cy, point.x, point.y, angle));
-            console.log(rotatedPoints);
             form.points = rotatedPoints;
+            }
         }
 
         function translateForm(form, deltaX, deltaY) {
             const translatedPoints = form.points.map(point => translatePoint(point.x, point.y, deltaX, deltaY));
-            console.log(translatedPoints);
             form.points = translatedPoints;
         }
 
@@ -125,38 +134,6 @@
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
             return { x, y };
-        }
-
-        // Function to draw a rotated imperfect rectangle (quadrilateral)
-        // NOT USED
-        function drawRotatedImperfectRectangle(points, angle) {
-            if (points.length !== 4) {
-                console.error('You must provide exactly 4 points to draw an imperfect rectangle.');
-                return;
-            }
-
-            // Calculate the center of the rectangle
-            const cx = (points[0].x + points[2].x) / 2;
-            const cy = (points[0].y + points[2].y) / 2;
-
-            // Calculate the rotated coordinates of the four corners
-            const rotatedPoints = points.map(point => rotatePoint(cx, cy, point.x, point.y, angle));
-
-            // Draw the rotated rectangle using the calculated points
-            ctx.beginPath();
-            ctx.moveTo(rotatedPoints[0].x, rotatedPoints[0].y);
-            for (let i = 1; i < rotatedPoints.length; i++) {
-                ctx.lineTo(rotatedPoints[i].x, rotatedPoints[i].y);
-            }
-            ctx.closePath();
-
-            // Set the fill color and fill the shape
-            ctx.fillStyle = '#00FF00';
-            ctx.fill();
-
-            // Optionally, set the stroke color and stroke the shape
-            ctx.strokeStyle = '#000000';
-            ctx.stroke();
         }
 
 
@@ -202,12 +179,19 @@
 
         }
 
+        function isPointInEllipse(x, y, form){
+            let relativeX = x-form.points[0].x;
+            let relativeY = y-form.points[0].y;
+            return Math.pow(relativeX,2)/Math.pow(form.a,2) + Math.pow(relativeY,2)/Math.pow(form.b,2)<=1;
+        }
+
         // Function to detect if a point is within a form (polygon)
         // ray-casting algorithm
         // if the point is within the polygon then it crosses the polygon's border an odd number of times
         function isPointInForm(x, y, form) {
             let inside = false;
             const points = form.points;
+            // si on passe 2 borders, alors on est à l'extérieur, impair = à l'intérieur
             for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
                 const xi = points[i].x, yi = points[i].y;
                 const xj = points[j].x, yj = points[j].y;
@@ -243,9 +227,11 @@
                 // TODO : performances : si première sélection trouvées, ne pas procéder aux autres calculs
                 // TODO : notion de layer
                 let selectedPolyForm = handlePolyFormSelection(event);
+                let selectedEllipseForm = handleEllipseFormSelection(event);
                 let selectedFreeForm = handleFreeFormSelection(event);
                 let selectedCenterSelectionForm = handleSelectionCenterSelection(event);
                 let selectedSelectionPointForm = handleSelectionPointSelection(event);
+
 
 
                 //let formsWithoutSelection = filterFormsWithoutSelection(selectedForms);
@@ -259,18 +245,32 @@
                 } else if (selectedPolyForm != undefined && selectedForm != selectedPolyForm) {
                     updateSelection(selectedPolyForm);
 
-                } else if (selectedFreeForm != undefined && selectedForm != selectedFreeForm){
+                } else if (selectedEllipseForm != undefined && selectedForm != selectedEllipseForm){
+                    console.log("selected Ellipse");
+                    updateSelection(selectedEllipseForm);
+
+                }else if (selectedFreeForm != undefined && selectedForm != selectedFreeForm){
                     updateSelection(selectedFreeForm);
 
-                } else if (selectedForm===selectedFreeForm || selectedForm===selectedPolyForm){
+                } else if (selectedForm===selectedFreeForm || selectedForm===selectedPolyForm || selectedForm===selectedEllipseForm){
                     // on clique sur la forme qui est déjà sélectionnée
                     // on tourne la form
-                    console.log("Rotating form");
                     rotatingForm = true;
                     originRotationPoint = { x: offsetX, y: offsetY };
                 }
 
             }
+        }
+
+        function handleEllipseFormSelection(event){
+            const { offsetX, offsetY } = event;
+            let ellipseForms = forms.filter(form => form.type === 'ellipse');
+            if (ellipseForms.length != 0) {
+                let selectedEllipses = ellipseForms.filter(form => isPointInEllipse(offsetX, offsetY, form));
+                // TODO gérer les layers
+                return selectedEllipses[0];
+            }
+            return undefined;
         }
 
         function handleSelectionCenterSelection(event) {
@@ -332,7 +332,11 @@
         function updateSelection(newSelectForm) {
             selectedForm = newSelectForm;
             forms = filterFormsWithoutSelection(forms);
+            if(newSelectForm.type==='ellipse'){
+                createSelectionFormsForEllipse();
+            } else {
             createSelectionForms();
+            }
         }
 
         function scaleForm(form, scaleFactor) {
@@ -353,6 +357,17 @@
         }
 
 
+
+        function getCardinalPointsForEllipse(form){
+
+            const points = [
+                { x: form.points[0].x + form.a*Math.cos(form.angle), y: form.points[0].y +form.a*Math.sin(form.angle) },
+                { x:  form.points[0].x +form.b*(-1)*Math.sin(form.angle), y: form.points[0].y+form.b*Math.cos(form.angle) },
+                { x: form.points[0].x +form.a*(-1)*Math.cos(form.angle), y:  form.points[0].y+form.a*(-1)*Math.sin(form.angle) },
+                { x:  form.points[0].x +form.b*Math.sin(form.angle), y: form.points[0].y+form.b*(-1)*Math.cos(form.angle) }
+            ];
+            return points;
+        }
 
         function getSelectionForm(form) {
             const maxX = Math.max(...form.points.map(point => point.x));
@@ -394,11 +409,36 @@
                     case 'poly':
                         drawPoly(form, true);
                         break;
+                    case 'ellipse':
+                        drawEllipse(form);
+                        break;
                 }
 
 
             });
         }
+
+        function drawEllipse(form) {
+    if (form.points !== undefined && form.points.length !== 0 && form.a !== undefined && form.b !== undefined) {
+        ctx.save(); // Save the current context state
+        ctx.beginPath();
+        ctx.ellipse(form.points[0].x, form.points[0].y, form.a, form.b, form.angle, 0, 2 * Math.PI);
+        if (form.inMotion) {
+            ctx.globalAlpha = 0.3;
+            ctx.setLineDash([5, 5]);
+            ctx.fillStyle = 'rgba(0, 0, 0)';
+            ctx.lineWidth = form.borderWidth;
+            ctx.strokeStyle = 'rgba(0, 0, 0)';
+        } else {
+            ctx.fillStyle = form.fillColor;
+            ctx.strokeStyle = form.borderColor;
+            ctx.lineWidth = form.borderWidth;
+        }
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore(); // Restore the context to its original state
+    }
+}
 
         function drawPoly(form, connectLastDot) {
             if(form.points!=undefined && form.points.length!=0){
@@ -476,6 +516,30 @@
             }
         }
 
+        function createSelectionFormsForEllipse(){
+   
+            let selectionPoints = getCardinalPointsForEllipse(selectedForm);
+            let pointsForSelectionForm = getSelectionFormPointsForEllipse(selectedForm, selectionPoints);
+
+            forms.push(new Form('selection', pointsForSelectionForm, null, null, null, false, null));
+
+            forms.push(new Form('selectionCenter', createCarre(selectedForm.points[0], 10), null, null, null, null, null));
+            for (i=0; i<selectionPoints.length; i++) {
+                let newSelectionPointForm = new Form('selectionPoint', createCarre(selectionPoints[i], 10), null, null, null, null, null);
+                newSelectionPointForm.associatedPointIndex = i;
+                forms.push(newSelectionPointForm);
+            }
+
+        }
+
+        function getSelectionFormPointsForEllipse(form, cardinalPoints){
+            let selectionFormPoints = [];
+            for(i=0;i<4;i++){
+                selectionFormPoints.push({x: cardinalPoints[i].x + cardinalPoints[(i+1)%4].x-form.points[0].x, y: cardinalPoints[i].y + cardinalPoints[(i+1)%4].y-form.points[0].y});
+            }
+            return selectionFormPoints;
+        }
+
         function createSelectionForms() {
             let selectionForm = getSelectionForm(selectedForm);
             forms.push(selectionForm);
@@ -508,14 +572,18 @@
 
         function handleFormRotation(event) {
             if (rotatingForm) {
-                forms = forms.filter(form => form.inMotion !== true);
+                let center;
                 const { offsetX, offsetY } = event;
-                const center = getMiddlePoint(selectedForm);
+                forms = forms.filter(form => form.inMotion !== true);
+                if(selectedForm.type==='ellipse'){
+                    center = selectedForm.points[0];
 
+                } else{
+                    center = getMiddlePoint(selectedForm);
+                }          
                 const cx = center.x;
                 const cy = center.y;
                 const angle = calculateAngleBetweenLines({ x: cx, y: cy }, { x: originRotationPoint.x, y: originRotationPoint.y }, { x: offsetX, y: offsetY });
-                console.log(angle);
                 let newForm = selectedForm.cloneInMotion();
                 rotateForm(newForm, angle);
                 forms.push(newForm);
@@ -527,30 +595,48 @@
                 forms = forms.filter(form => form.inMotion !== true);
                 const { offsetX, offsetY } = event;
                 let newForm = selectedForm.cloneInMotion();
+                if(selectedForm.type==='ellipse'){
+                    forms = forms.filter(form => form.inMotion !== true);
+                    const { offsetX, offsetY } = event;
+                    let distance = calculateDistanceBetweenPoints(selectedForm.points[0], {x: offsetX, y: offsetY});
+
+                    if(pointThatIsMoving%2===1){
+                        newForm.b=distance;
+                    } else {
+                        newForm.a=distance;
+                    }
+                } else {
+
                 newForm.points[pointThatIsMoving].x = offsetX;
                 newForm.points[pointThatIsMoving].y = offsetY;
+                }
                 forms.push(newForm);
+
             }
-
-
         }
 
 
         function handleFormTranslation(event) {
             if (translatingForm) {
-                forms = forms.filter(form => form.inMotion !== true);
                 const { offsetX, offsetY } = event;
-                let origin = getMiddlePoint(forms.find(form => form.id === 'selection'));
+                forms = forms.filter(form => form.inMotion !== true);
+                let origin;
+                if(selectedForm.type==='ellipse'){
+                    origin = selectedForm.points[0];
+                } else {
+                origin = getMiddlePoint(forms.find(form => form.id === 'selection'));
+                }
                 const deltaX = offsetX - origin.x;
                 const deltaY = offsetY - origin.y;
                 let newForm = selectedForm.cloneInMotion();
                 translateForm(newForm, deltaX, deltaY);
                 forms.push(newForm);
+                }
             }
-        }
+        
 
 
-
+        // for the selection points and center
         function drawCircle(origin, radius, fillColor, borderColor, borderWidth) {
             ctx.save(); // Save the current context state
             ctx.beginPath();
@@ -629,23 +715,12 @@
 
         forms.push(new Form('rtert', points, '#000000', 2, '#00FF00', false, 'poly'));
 
-        // try with triangle
-        // Example usage
-        const pointsTriangle = [
-            { x: 300, y: 350 },
-            { x: 350, y: 500 },
-            { x: 400, y: 350 }
-        ];
 
-        forms.push(new Form('triangle', pointsTriangle, '#000000', 2, '#00FF00', false, 'poly'));
+        forms.push(new Ellipse('test', {x: 400, y: 400}, 100, 100, 0, '#000000', 2, '#00FF00', false, 'ellipse'))
 
-        // try with line
-        // Example usage
-        const pointsLine = [
-            { x: 20, y: 20 },
-            { x: 200, y: 20 },
 
-        ];
+
+        // try with Ellipse
 
         //forms.push(new Form('line', pointsLine, '#000000', 2, '#00FF00', false, 'free'));
 
