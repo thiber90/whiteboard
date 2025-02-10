@@ -11,6 +11,8 @@
         <button id="decreaseScale">-</button>
         <button id="selectionMode">select</button>
         <button id="freeDrawingMode">free</button>
+        <button id="createRectangle">create rect</button>
+
     </div>
     <canvas id="myCanvas" width="500" height="500" style="border:1px solid #000000;"></canvas>
     <script>
@@ -19,6 +21,10 @@
         var translatingForm = false;
         var movingPoint = false;
         var selectionMode = false;
+        var creationMode = false;
+        var creationType;
+        var creating = false;
+        var originCreation;
         var freeDrawingMode = true;
         var freeDrawingPoints = [];
         var freeDrawing = false;
@@ -58,22 +64,37 @@
         }
 
         class Ellipse extends Form {
-                constructor(id, center, a, b, angle, borderColor, borderWidth, fillColor, inMotion, type) {
-                    super(id, [center], borderColor, borderWidth, fillColor, inMotion, type);
-                    this.a = a;
-                    this.b = b;
-                    this.angle = angle;
-                }
-
-                    // Method to clone the Ellipse object while setting inMotion to true
-    cloneInMotion() {
-        const centerCopy = { x: this.points[0].x, y: this.points[0].y };
-        return new Ellipse(this.id, centerCopy, this.a, this.b, this.angle, this.borderColor, this.borderWidth, this.fillColor, true, this.type);
-    }
-
-
-                // Additional methods specific to Ellipse can be added here
+            constructor(id, center, a, b, angle, borderColor, borderWidth, fillColor, inMotion, type) {
+                super(id, [center], borderColor, borderWidth, fillColor, inMotion, type);
+                this.a = a;
+                this.b = b;
+                this.angle = angle;
             }
+
+            // Method to clone the Ellipse object while setting inMotion to true
+            cloneInMotion() {
+                const centerCopy = { x: this.points[0].x, y: this.points[0].y };
+                return new Ellipse(this.id, centerCopy, this.a, this.b, this.angle, this.borderColor, this.borderWidth, this.fillColor, true, this.type);
+            }
+        }
+        class Text extends Form {
+            constructor(id, origin, content, a, b, angle, font, size, fillColor, inMotion, type) {
+                super(id, [origin], null, null, fillColor, inMotion, type);
+                this.content = content;
+                this.a = a;
+                this.b = b;
+                this.angle = angle;
+                this.font = font;
+                this.size = size;
+            }
+
+            // Method to clone the Ellipse object while setting inMotion to true
+            cloneInMotion() {
+                const originCopy = { x: this.points[0].x, y: this.points[0].y };
+                return new Text(this.id, originCopy, this.content, this.a, this.b, this.angle, this.font, this.size, this.fillColor, true, this.type);
+            }
+
+        }
 
         function calculateAngleBetweenLines(origin, point1, point2) {
             // Calculate the vectors
@@ -107,15 +128,23 @@
             return { x: Math.round(nx), y: Math.round(ny) };
         }
 
-        function rotateForm(form, angle) {
-            if(form.type==='ellipse'){
-                form.angle=form.angle+angle * Math.PI / 180;
+        function rotateForm(form, angle, center) {
+            if (form.type === 'ellipse') {
+                form.angle = form.angle + angle * Math.PI / 180;
+            } else if (form.type === 'text') {
+                form.angle = form.angle + angle * Math.PI / 180;
+                let newCenter = rotatePoint(form.points[0].x, form.points[0].y, center.x, center.y, angle);
+                let dx = newCenter.x - center.x;
+                let dy = newCenter.y - center.y;
+                form.points[0] = { x: form.points[0].x - dx, y: form.points[0].y - dy };
+                // we need to recalculate the position of the origin
+                //form.points[0]= rotatePoint(center.x, center.y, form.points[0].x, form.points[0].y, angle);
             } else {
-            const center = getMiddlePoint(form);
-            const cx = center.x;
-            const cy = center.y;
-            const rotatedPoints = form.points.map(point => rotatePoint(cx, cy, point.x, point.y, angle));
-            form.points = rotatedPoints;
+                const center = getMiddlePoint(form);
+                const cx = center.x;
+                const cy = center.y;
+                const rotatedPoints = form.points.map(point => rotatePoint(cx, cy, point.x, point.y, angle));
+                form.points = rotatedPoints;
             }
         }
 
@@ -138,6 +167,17 @@
 
 
         function handleMouseUp(event) {
+            if(creationMode){
+                let formCreated = forms.find(form => form.inMotion === true);
+                formCreated.inMotion = false;
+                formCreated.id = generateFormId;
+                formCreated.borderColor = '#000000';
+                formCreated.borderWidth =2;
+                formCreated.fillColor = '#00FF00';
+                resetVariables();
+                updateSelection(formCreated);
+                selectionMode= true;
+            }
             if (rotatingForm || translatingForm || movingPoint) {
                 originRotationPoint = null;
                 pointThatIsMoving = null;
@@ -166,6 +206,23 @@
             handleFormTranslation(event);
             handlePointMoving(event);
             handleFreeDrawing(event);
+            handleCreation(event);
+        }
+
+        function handleCreation(event){
+            if(creating){
+                const { offsetX, offsetY } = event;
+
+            if(creationType==='rect'){
+                handleRectangleCreation({x: offsetX, y: offsetY })
+            }
+            }
+        }
+
+        function handleRectangleCreation(point){
+            let points = [{x: originCreation.x, y:originCreation.y}, {x:point.x, y:originCreation.y}, {x:point.x, y: point.y}, {x:originCreation.x, y:point.y}]
+            forms = forms.filter(form => form.inMotion===false);
+            forms.push(new Form(null, points, null, null, null, true, 'poly'));
         }
 
         function handleFreeDrawing(event) {
@@ -179,10 +236,10 @@
 
         }
 
-        function isPointInEllipse(x, y, form){
-            let relativeX = x-form.points[0].x;
-            let relativeY = y-form.points[0].y;
-            return Math.pow(relativeX,2)/Math.pow(form.a,2) + Math.pow(relativeY,2)/Math.pow(form.b,2)<=1;
+        function isPointInEllipse(x, y, form) {
+            let relativeX = x - form.points[0].x;
+            let relativeY = y - form.points[0].y;
+            return Math.pow(relativeX, 2) / Math.pow(form.a, 2) + Math.pow(relativeY, 2) / Math.pow(form.b, 2) <= 1;
         }
 
         // Function to detect if a point is within a form (polygon)
@@ -212,7 +269,16 @@
         function handleMouseDown(event) {
             handleSelectionMode(event);
             handleFreeDrawingMode(event);
+            handleCreationMode(event);
 
+        }
+
+        function handleCreationMode(event){
+            if(creationMode){
+                const { offsetX, offsetY } = event;
+                creating=true;
+                originCreation = {x: offsetX, y: offsetY};
+            }
         }
 
         function handleFreeDrawingMode(event) {
@@ -231,7 +297,7 @@
                 let selectedFreeForm = handleFreeFormSelection(event);
                 let selectedCenterSelectionForm = handleSelectionCenterSelection(event);
                 let selectedSelectionPointForm = handleSelectionPointSelection(event);
-
+                let selectedTextForm = handleTextSelection(event);
 
 
                 //let formsWithoutSelection = filterFormsWithoutSelection(selectedForms);
@@ -239,20 +305,22 @@
 
                 if (selectedCenterSelectionForm !== undefined) {
                     translatingForm = true;
-                } else if (selectedSelectionPointForm!= undefined) {
+                } else if (selectedSelectionPointForm != undefined) {
                     movingPoint = true;
                     pointThatIsMoving = selectedSelectionPointForm.associatedPointIndex;
                 } else if (selectedPolyForm != undefined && selectedForm != selectedPolyForm) {
                     updateSelection(selectedPolyForm);
 
-                } else if (selectedEllipseForm != undefined && selectedForm != selectedEllipseForm){
-                    console.log("selected Ellipse");
+                } else if (selectedEllipseForm != undefined && selectedForm != selectedEllipseForm) {
                     updateSelection(selectedEllipseForm);
 
-                }else if (selectedFreeForm != undefined && selectedForm != selectedFreeForm){
+                } else if (selectedFreeForm != undefined && selectedForm != selectedFreeForm) {
                     updateSelection(selectedFreeForm);
 
-                } else if (selectedForm===selectedFreeForm || selectedForm===selectedPolyForm || selectedForm===selectedEllipseForm){
+                } else if (selectedTextForm != undefined && selectedForm != selectedTextForm) {
+                    updateSelection(selectedTextForm);
+
+                } else if (selectedForm === selectedFreeForm || selectedForm === selectedPolyForm || selectedForm === selectedEllipseForm || selectedForm === selectedTextForm) {
                     // on clique sur la forme qui est déjà sélectionnée
                     // on tourne la form
                     rotatingForm = true;
@@ -262,7 +330,7 @@
             }
         }
 
-        function handleEllipseFormSelection(event){
+        function handleEllipseFormSelection(event) {
             const { offsetX, offsetY } = event;
             let ellipseForms = forms.filter(form => form.type === 'ellipse');
             if (ellipseForms.length != 0) {
@@ -292,7 +360,7 @@
                 return selectedPoints[0];
             }
             return undefined;
-             //return single
+            //return single
 
         }
 
@@ -301,12 +369,37 @@
             const { offsetX, offsetY } = event;
             let polyForms = forms.filter(form => form.type === 'poly');
             let selectedPolyForms = polyForms.filter(form => isPointInForm(offsetX, offsetY, form));
+            // includes lines
+            selectedPolyForms.push(...polyForms.filter(form => form.points.length == 2 && isPointNearLine({ x: offsetX, y: offsetY }, form.points[0], form.points[1], 20)));
+
             // TODO : ne pas remonter une liste mais la form avec la layer la plus élevée (celle qui est le plus au premier plan)
-            if(selectedPolyForms.length!=0){
-                return selectedPolyForms[0] ;
+            if (selectedPolyForms.length != 0) {
+                return selectedPolyForms[0];
             }
             return undefined;
 
+        }
+
+        function getSelectionPointsForTextForm(form) {
+            return [{ x: form.points[0].x, y: form.points[0].y },
+            { x: form.points[0].x + form.a * Math.cos(form.angle), y: form.points[0].y + form.a * Math.sin(form.angle) },
+            {
+                x: form.points[0].x + form.a * Math.cos(form.angle) + form.b * Math.sin(form.angle), y: form.points[0].y + form.a * Math.sin(form.angle)
+                    - form.b * Math.cos(form.angle)
+            },
+            { x: form.points[0].x + form.b * Math.sin(form.angle), y: form.points[0].y - form.b * Math.cos(form.angle) }
+            ]
+        }
+
+        function handleTextSelection(event) {
+            const { offsetX, offsetY } = event;
+            let textForms = forms.filter(form => form.type === 'text');
+            let selectedTextForms = textForms.filter(form => isPointInForm(offsetX, offsetY, new Form(null, getSelectionPointsForTextForm(form), null, null, null, null, null)));
+            if (selectedTextForms.length != 0) {
+                console.log("text form selected");
+                return selectedTextForms[0];
+            }
+            return undefined;
         }
 
         function handleFreeFormSelection(event) {
@@ -329,42 +422,70 @@
             return Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
         }
 
+
+        function isPointNearLine(pointToDetermine, point1, point2, maxDistance) {
+            // Calculate A, B, and C for the line equation Ax + By + C = 0
+            const A = point2.y - point1.y;
+            const B = point1.x - point2.x;
+            const C = point2.x * point1.y - point1.x * point2.y;
+
+            // Calculate the distance from the point (x0, y0) to the line
+            const distance = Math.abs(A * pointToDetermine.x + B * pointToDetermine.y + C) / Math.sqrt(A * A + B * B);
+
+            // Check if the distance is within the specified maximum distance
+            return distance <= maxDistance;
+        }
+
         function updateSelection(newSelectForm) {
             selectedForm = newSelectForm;
             forms = filterFormsWithoutSelection(forms);
-            if(newSelectForm.type==='ellipse'){
+            if (newSelectForm.type === 'ellipse') {
                 createSelectionFormsForEllipse();
+            } else if (newSelectForm.type === 'text') {
+                createSelectionFormsForText();
             } else {
-            createSelectionForms();
+                createSelectionForms();
             }
         }
 
         function scaleForm(form, scaleFactor) {
-            // Calculate the center of the polygon
-            const centerX = form.points.reduce((sum, point) => sum + point.x, 0) / form.points.length;
-            const centerY = form.points.reduce((sum, point) => sum + point.y, 0) / form.points.length;
-            let center = getMiddlePoint(form);
+            if (form.type === 'ellipse') {
+                form.a = form.a * scaleFactor;
+                form.b = form.b * scaleFactor;
 
-            // Scale each point relative to the center
-            const scaledPoints = form.points.map(point => {
-                return {
-                    x: center.x + (point.x - center.x) * scaleFactor,
-                    y: center.y + (point.y - center.y) * scaleFactor
-                };
-            });
-            form.points = scaledPoints;
-            updateSelection(form);
+            } else if (form.type === 'text') {
+                if (scaleFactor === 1.10) {
+                    form.size += 1;
+                }
+                else if (scaleFactor === 0.90) {
+                    form.size += -1;
+                }
+            } else {
+                // Calculate the center of the polygon
+                const centerX = form.points.reduce((sum, point) => sum + point.x, 0) / form.points.length;
+                const centerY = form.points.reduce((sum, point) => sum + point.y, 0) / form.points.length;
+                let center = getMiddlePoint(form);
+
+                // Scale each point relative to the center
+                const scaledPoints = form.points.map(point => {
+                    return {
+                        x: center.x + (point.x - center.x) * scaleFactor,
+                        y: center.y + (point.y - center.y) * scaleFactor
+                    };
+                });
+                form.points = scaledPoints;
+            }
         }
 
 
 
-        function getCardinalPointsForEllipse(form){
+        function getCardinalPointsForEllipse(form) {
 
             const points = [
-                { x: form.points[0].x + form.a*Math.cos(form.angle), y: form.points[0].y +form.a*Math.sin(form.angle) },
-                { x:  form.points[0].x +form.b*(-1)*Math.sin(form.angle), y: form.points[0].y+form.b*Math.cos(form.angle) },
-                { x: form.points[0].x +form.a*(-1)*Math.cos(form.angle), y:  form.points[0].y+form.a*(-1)*Math.sin(form.angle) },
-                { x:  form.points[0].x +form.b*Math.sin(form.angle), y: form.points[0].y+form.b*(-1)*Math.cos(form.angle) }
+                { x: form.points[0].x + form.a * Math.cos(form.angle), y: form.points[0].y + form.a * Math.sin(form.angle) },
+                { x: form.points[0].x + form.b * (-1) * Math.sin(form.angle), y: form.points[0].y + form.b * Math.cos(form.angle) },
+                { x: form.points[0].x + form.a * (-1) * Math.cos(form.angle), y: form.points[0].y + form.a * (-1) * Math.sin(form.angle) },
+                { x: form.points[0].x + form.b * Math.sin(form.angle), y: form.points[0].y + form.b * (-1) * Math.cos(form.angle) }
             ];
             return points;
         }
@@ -412,6 +533,8 @@
                     case 'ellipse':
                         drawEllipse(form);
                         break;
+                    case 'text':
+                        drawText(form);
                 }
 
 
@@ -419,61 +542,61 @@
         }
 
         function drawEllipse(form) {
-    if (form.points !== undefined && form.points.length !== 0 && form.a !== undefined && form.b !== undefined) {
-        ctx.save(); // Save the current context state
-        ctx.beginPath();
-        ctx.ellipse(form.points[0].x, form.points[0].y, form.a, form.b, form.angle, 0, 2 * Math.PI);
-        if (form.inMotion) {
-            ctx.globalAlpha = 0.3;
-            ctx.setLineDash([5, 5]);
-            ctx.fillStyle = 'rgba(0, 0, 0)';
-            ctx.lineWidth = form.borderWidth;
-            ctx.strokeStyle = 'rgba(0, 0, 0)';
-        } else {
-            ctx.fillStyle = form.fillColor;
-            ctx.strokeStyle = form.borderColor;
-            ctx.lineWidth = form.borderWidth;
+            if (form.points !== undefined && form.points.length !== 0 && form.a !== undefined && form.b !== undefined) {
+                ctx.save(); // Save the current context state
+                ctx.beginPath();
+                ctx.ellipse(form.points[0].x, form.points[0].y, form.a, form.b, form.angle, 0, 2 * Math.PI);
+                if (form.inMotion) {
+                    ctx.globalAlpha = 0.3;
+                    ctx.setLineDash([5, 5]);
+                    ctx.fillStyle = 'rgba(0, 0, 0)';
+                    ctx.lineWidth = form.borderWidth;
+                    ctx.strokeStyle = 'rgba(0, 0, 0)';
+                } else {
+                    ctx.fillStyle = form.fillColor;
+                    ctx.strokeStyle = form.borderColor;
+                    ctx.lineWidth = form.borderWidth;
+                }
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore(); // Restore the context to its original state
+            }
         }
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore(); // Restore the context to its original state
-    }
-}
 
         function drawPoly(form, connectLastDot) {
-            if(form.points!=undefined && form.points.length!=0){
-            ctx.save(); // Save the current context state
-            ctx.beginPath();
-            ctx.moveTo(form.points[0].x, form.points[0].y);
-            for (let i = 1; i < form.points.length; i++) {
-                ctx.lineTo(form.points[i].x, form.points[i].y);
-            }
-            if (connectLastDot) {
-                ctx.closePath();
-            }
-            if (form.inMotion) {
-                ctx.globalAlpha = 0.3;
-                ctx.setLineDash([5, 5]);
-                if(form.type!='free'){
-                ctx.setfillStyle = 'rgba(0, 0, 0)';
-                ctx.fill();
+            if (form.points != undefined && form.points.length != 0) {
+                ctx.save(); // Save the current context state
+                ctx.beginPath();
+                ctx.moveTo(form.points[0].x, form.points[0].y);
+                for (let i = 1; i < form.points.length; i++) {
+                    ctx.lineTo(form.points[i].x, form.points[i].y);
                 }
-                ctx.lineWidth = form.borderWidth;
-                ctx.strokeStyle = 'rgba(0, 0, 0)';
-                ctx.stroke();
-
-            } else {
-                if (form.fillColor != null) {
-                    ctx.fillStyle = form.fillColor;
-                    ctx.fill();
+                if (connectLastDot || (form.type == 'poly' && form.points.length > 2)) {
+                    ctx.closePath();
                 }
+                if (form.inMotion) {
+                    ctx.globalAlpha = 0.3;
+                    ctx.setLineDash([5, 5]);
+                    if (form.type != 'free') {
+                        ctx.setfillStyle = 'rgba(0, 0, 0)';
+                        ctx.fill();
+                    }
+                    ctx.lineWidth = form.borderWidth;
+                    ctx.strokeStyle = 'rgba(0, 0, 0)';
+                    ctx.stroke();
 
-                ctx.strokeStyle = form.borderColor;
-                ctx.lineWidth = form.borderWidth;
-                ctx.stroke();
+                } else {
+                    if (form.fillColor != null) {
+                        ctx.fillStyle = form.fillColor;
+                        ctx.fill();
+                    }
+
+                    ctx.strokeStyle = form.borderColor;
+                    ctx.lineWidth = form.borderWidth;
+                    ctx.stroke();
+                }
+                ctx.restore(); // Restore the context to its original state
             }
-            ctx.restore(); // Restore the context to its original state
-        }
         }
 
         function drawFreeDrawingPoints() {
@@ -516,15 +639,24 @@
             }
         }
 
-        function createSelectionFormsForEllipse(){
-   
+
+        function createSelectionFormsForText() {
+            let cornerPoints = getSelectionPointsForTextForm(selectedForm);
+            let selectionForm = new Form('selection', cornerPoints, null, null, null, false, null);
+            forms.push(selectionForm);
+            forms.push(new Form('selectionCenter', createCarre(getMiddlePoint(selectionForm), 10), null, null, null, null, null));
+        }
+
+
+        function createSelectionFormsForEllipse() {
+
             let selectionPoints = getCardinalPointsForEllipse(selectedForm);
             let pointsForSelectionForm = getSelectionFormPointsForEllipse(selectedForm, selectionPoints);
 
             forms.push(new Form('selection', pointsForSelectionForm, null, null, null, false, null));
 
             forms.push(new Form('selectionCenter', createCarre(selectedForm.points[0], 10), null, null, null, null, null));
-            for (i=0; i<selectionPoints.length; i++) {
+            for (i = 0; i < selectionPoints.length; i++) {
                 let newSelectionPointForm = new Form('selectionPoint', createCarre(selectionPoints[i], 10), null, null, null, null, null);
                 newSelectionPointForm.associatedPointIndex = i;
                 forms.push(newSelectionPointForm);
@@ -532,10 +664,10 @@
 
         }
 
-        function getSelectionFormPointsForEllipse(form, cardinalPoints){
+        function getSelectionFormPointsForEllipse(form, cardinalPoints) {
             let selectionFormPoints = [];
-            for(i=0;i<4;i++){
-                selectionFormPoints.push({x: cardinalPoints[i].x + cardinalPoints[(i+1)%4].x-form.points[0].x, y: cardinalPoints[i].y + cardinalPoints[(i+1)%4].y-form.points[0].y});
+            for (i = 0; i < 4; i++) {
+                selectionFormPoints.push({ x: cardinalPoints[i].x + cardinalPoints[(i + 1) % 4].x - form.points[0].x, y: cardinalPoints[i].y + cardinalPoints[(i + 1) % 4].y - form.points[0].y });
             }
             return selectionFormPoints;
         }
@@ -544,13 +676,13 @@
             let selectionForm = getSelectionForm(selectedForm);
             forms.push(selectionForm);
             forms.push(new Form('selectionCenter', createCarre(getMiddlePoint(selectionForm), 10), null, null, null, null, null));
-            if(selectedForm.type==='poly'){
-            // selection points
-            for (point of selectedForm.points) {
-                let newSelectionPointForm = new Form('selectionPoint', createCarre(point, 10), null, null, null, null, null);
-                newSelectionPointForm.associatedPointIndex = selectedForm.points.findIndex(p => p.x === point.x && p.y === point.y);
-                forms.push(newSelectionPointForm);
-            }
+            if (selectedForm.type === 'poly') {
+                // selection points
+                for (point of selectedForm.points) {
+                    let newSelectionPointForm = new Form('selectionPoint', createCarre(point, 10), null, null, null, null, null);
+                    newSelectionPointForm.associatedPointIndex = selectedForm.points.findIndex(p => p.x === point.x && p.y === point.y);
+                    forms.push(newSelectionPointForm);
+                }
             }
         }
 
@@ -567,7 +699,18 @@
                 }
             }
 
-            forms.push(new Form('test', pointsToAdd, '#000000', 2, null, false, 'free'));
+            forms.push(new Form(generateFormId(), pointsToAdd, '#000000', 2, null, false, 'free'));
+        }
+
+
+        function generateFormId() {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let id = '';
+            for (let i = 0; i < 8; i++) {
+                const randomIndex = Math.floor(Math.random() * characters.length);
+                id += characters[randomIndex];
+            }
+            return id;
         }
 
         function handleFormRotation(event) {
@@ -575,17 +718,20 @@
                 let center;
                 const { offsetX, offsetY } = event;
                 forms = forms.filter(form => form.inMotion !== true);
-                if(selectedForm.type==='ellipse'){
+                if (selectedForm.type === 'ellipse') {
                     center = selectedForm.points[0];
 
-                } else{
+                } else if (selectedForm.type === 'text') {
+                    center = getMiddlePoint(new Form(null, getSelectionPointsForTextForm(selectedForm), null, null, null, false, null));
+
+                } else {
                     center = getMiddlePoint(selectedForm);
-                }          
+                }
                 const cx = center.x;
                 const cy = center.y;
                 const angle = calculateAngleBetweenLines({ x: cx, y: cy }, { x: originRotationPoint.x, y: originRotationPoint.y }, { x: offsetX, y: offsetY });
                 let newForm = selectedForm.cloneInMotion();
-                rotateForm(newForm, angle);
+                rotateForm(newForm, angle, center);
                 forms.push(newForm);
             }
         }
@@ -595,20 +741,20 @@
                 forms = forms.filter(form => form.inMotion !== true);
                 const { offsetX, offsetY } = event;
                 let newForm = selectedForm.cloneInMotion();
-                if(selectedForm.type==='ellipse'){
+                if (selectedForm.type === 'ellipse') {
                     forms = forms.filter(form => form.inMotion !== true);
                     const { offsetX, offsetY } = event;
-                    let distance = calculateDistanceBetweenPoints(selectedForm.points[0], {x: offsetX, y: offsetY});
+                    let distance = calculateDistanceBetweenPoints(selectedForm.points[0], { x: offsetX, y: offsetY });
 
-                    if(pointThatIsMoving%2===1){
-                        newForm.b=distance;
+                    if (pointThatIsMoving % 2 === 1) {
+                        newForm.b = distance;
                     } else {
-                        newForm.a=distance;
+                        newForm.a = distance;
                     }
                 } else {
 
-                newForm.points[pointThatIsMoving].x = offsetX;
-                newForm.points[pointThatIsMoving].y = offsetY;
+                    newForm.points[pointThatIsMoving].x = offsetX;
+                    newForm.points[pointThatIsMoving].y = offsetY;
                 }
                 forms.push(newForm);
 
@@ -621,19 +767,39 @@
                 const { offsetX, offsetY } = event;
                 forms = forms.filter(form => form.inMotion !== true);
                 let origin;
-                if(selectedForm.type==='ellipse'){
+                if (selectedForm.type === 'ellipse') {
                     origin = selectedForm.points[0];
                 } else {
-                origin = getMiddlePoint(forms.find(form => form.id === 'selection'));
+                    origin = getMiddlePoint(forms.find(form => form.id === 'selection'));
                 }
                 const deltaX = offsetX - origin.x;
                 const deltaY = offsetY - origin.y;
                 let newForm = selectedForm.cloneInMotion();
                 translateForm(newForm, deltaX, deltaY);
                 forms.push(newForm);
-                }
             }
-        
+        }
+
+        function drawText(form) {
+            if (form.points !== undefined && form.points.length !== 0) {
+                ctx.save(); // Save the current context state
+
+                ctx.translate(form.points[0].x, form.points[0].y); // Move the canvas origin to the center
+
+                ctx.rotate(form.angle); // Rotate the canvas by the specified angle (in radians)
+                ctx.translate(-form.points[0].x, -form.points[0].y); // Move the canvas origin back to the top-left corner
+
+                ctx.font = form.size + 'px ' + form.font; // Set the font
+                if (form.inMotion) {
+                    ctx.globalAlpha = 0.3;
+                }
+                ctx.fillStyle = form.fillColor; // Set the fill color
+                ctx.textAlign = 'start'; // Set the text alignment
+                ctx.fillText(form.content, form.points[0].x, form.points[0].y); // Draw the text
+                ctx.restore(); // Restore the context to its original state
+            }
+        }
+
 
 
         // for the selection points and center
@@ -649,45 +815,98 @@
             ctx.restore(); // Restore the context to its original state
         }
 
+        function measureTextUsingDOM(text, font) {
+            // Create a temporary span element
+            const span = document.createElement('span');
+            span.style.font = font;
+            span.style.position = 'absolute';
+            span.style.whiteSpace = 'nowrap';
+            span.style.visibility = 'hidden';
+            span.textContent = text;
 
-        function resetVariables(){
-         rotatingForm = false;
-         translatingForm = false;
-         movingPoint = false;
-         selectionMode = false;
-         freeDrawingMode = false;
-         freeDrawingPoints = [];
-         freeDrawing = false;
-         pointThatIsMoving = undefined;
-         originRotationPoint = undefined;
-         selectedForm = undefined;
-         forms = forms.filter(form => form.id !== 'selection' && form.id !== 'selectionCenter' && form.id !== 'selectionPoint');
+            // Append the span to the body
+            document.body.appendChild(span);
+
+            // Get the dimensions of the text
+            const rect = span.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+
+            // Remove the span from the body
+            document.body.removeChild(span);
+
+            return { width, height };
+        }
+
+
+        function resetVariables() {
+            rotatingForm = false;
+            translatingForm = false;
+            movingPoint = false;
+            selectionMode = false;
+            creationMode = false;
+            creationType = undefined;
+            creating = false;
+            originCreation = undefined;
+            freeDrawingMode = false;
+            freeDrawingPoints = [];
+            freeDrawing = false;
+            pointThatIsMoving = undefined;
+            originRotationPoint = undefined;
+            selectedForm = undefined;
+            forms = forms.filter(form => form.id !== 'selection' && form.id !== 'selectionCenter' && form.id !== 'selectionPoint');
+        }
+
+        function resetTextFormParameters(form){
+            let textMeasurement = measureTextUsingDOM(form.content, form.size + 'px ' + form.font);
+                form.a=textMeasurement.width;
+                form.b=textMeasurement.height;
         }
 
         function handleIncreaseScaleButton(event) {
             if (selectedForm != undefined) {
                 scaleForm(selectedForm, 1.10);
-
             }
+            if(selectedForm.type==='text'){
+                resetTextFormParameters(selectedForm);
+            }
+            updateSelection(selectedForm);
+
         }
         function handleDecreaseScaleButton(event) {
             if (selectedForm != undefined) {
                 scaleForm(selectedForm, 0.90);
             }
+            if(selectedForm.type==='text'){
+                resetTextFormParameters(selectedForm);
+            }
+            updateSelection(selectedForm);
         }
 
         function handleFreeDrawingModeButton(event) {
-                if(freeDrawingMode===false){
-                    resetVariables();
-                    freeDrawingMode=true;
-                }
+            if (freeDrawingMode === false) {
+                resetVariables();
+                freeDrawingMode = true;
+            }
         }
 
         function handleSelectionModeButton(event) {
-            if(selectionMode===false){
-                    resetVariables();
-                    selectionMode=true;
+            if (selectionMode === false) {
+                resetVariables();
+                selectionMode = true;
+            }
+        }
+
+        function handleCreationModeButton(event){
+            if (creationMode === false) {
+                resetVariables();
+                creationMode = true;
+                const buttonId = event.srcElement.id;
+                if (buttonId === 'createRectangle') {
+                    creationType = 'rect';
                 }
+            }
+
         }
 
         // listeners
@@ -701,7 +920,7 @@
         document.getElementById('freeDrawingMode').addEventListener('mousedown', handleFreeDrawingModeButton);
         document.getElementById('selectionMode').addEventListener('mousedown', handleSelectionModeButton);
 
-
+        document.getElementById('createRectangle').addEventListener('mousedown', handleCreationModeButton);
 
         // this part is for tests
 
@@ -716,15 +935,20 @@
         forms.push(new Form('rtert', points, '#000000', 2, '#00FF00', false, 'poly'));
 
 
-        forms.push(new Ellipse('test', {x: 400, y: 400}, 100, 100, 0, '#000000', 2, '#00FF00', false, 'ellipse'))
+        forms.push(new Ellipse('test', { x: 400, y: 400 }, 100, 100, 0, '#000000', 2, '#00FF00', false, 'ellipse'))
 
+        // test with Text
+        let textMeasurement = measureTextUsingDOM('Hello, World!', '16px Arial');
+        forms.push(new Text('testText', { x: 50, y: 50 }, 'Hello, World!', textMeasurement.width, textMeasurement.height, 0, 'Arial', 16, 'black', false, 'text'));
 
+        // test with line
+        forms.push(new Form('testLine', [{ x: 300, y: 100 },
+        { x: 350, y: 80 }], '#000000', 2, '#00FF00', false, 'poly'));
 
-        // try with Ellipse
-
-        //forms.push(new Form('line', pointsLine, '#000000', 2, '#00FF00', false, 'free'));
 
         draw();
+
+
 
         // Draw the rotated imperfect rectangle
         // drawRotatedImperfectRectangle(points, 60)
