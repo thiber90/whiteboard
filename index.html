@@ -3,6 +3,7 @@
 
 <head>
     <title>Rotate Imperfect Rectangle</title>
+    <script src="minTextInput.js"></script>
 </head>
 
 <body>
@@ -12,6 +13,14 @@
         <button id="selectionMode">select</button>
         <button id="freeDrawingMode">free</button>
         <button id="createRectangle">create rect</button>
+        <button id="createText">create rect</button>
+        <button id="createCircle">create circ</button>
+        <button id="createLine">create line</button>
+        <button id="createTriangle">create triangle</button>
+
+
+
+
 
     </div>
     <canvas id="myCanvas" width="500" height="500" style="border:1px solid #000000;"></canvas>
@@ -24,6 +33,7 @@
         var creationMode = false;
         var creationType;
         var creating = false;
+        var textInput;
         var originCreation;
         var freeDrawingMode = true;
         var freeDrawingPoints = [];
@@ -167,16 +177,16 @@
 
 
         function handleMouseUp(event) {
-            if(creationMode){
+            if (creationMode && creationType!=='text') {
                 let formCreated = forms.find(form => form.inMotion === true);
                 formCreated.inMotion = false;
-                formCreated.id = generateFormId;
+                formCreated.id = generateFormId();
                 formCreated.borderColor = '#000000';
-                formCreated.borderWidth =2;
+                formCreated.borderWidth = 2;
                 formCreated.fillColor = '#00FF00';
                 resetVariables();
                 updateSelection(formCreated);
-                selectionMode= true;
+                selectionMode = true;
             }
             if (rotatingForm || translatingForm || movingPoint) {
                 originRotationPoint = null;
@@ -209,19 +219,72 @@
             handleCreation(event);
         }
 
-        function handleCreation(event){
-            if(creating){
+        function handleCreation(event) {
+            if (creating) {
                 const { offsetX, offsetY } = event;
 
-            if(creationType==='rect'){
-                handleRectangleCreation({x: offsetX, y: offsetY })
-            }
+                if (creationType === 'rect') {
+                    handleRectangleCreation({ x: offsetX, y: offsetY });
+                } else if (creationType === 'circle'){
+                    handleCircleCreation({ x: offsetX, y: offsetY });
+
+                } else if (creationType === 'line'){
+                    handleLineCreation({ x: offsetX, y: offsetY });
+
+                } else if (creationType === 'triangle'){
+                    handleTriangleCreation({ x: offsetX, y: offsetY });
+
+                }
             }
         }
 
-        function handleRectangleCreation(point){
-            let points = [{x: originCreation.x, y:originCreation.y}, {x:point.x, y:originCreation.y}, {x:point.x, y: point.y}, {x:originCreation.x, y:point.y}]
-            forms = forms.filter(form => form.inMotion===false);
+        function handleTextCreation(point) {
+            textInput = new MinTextInput({
+                canvas: document.getElementById('myCanvas'),
+                x: point.x,
+                y: point.y,
+                // TODO put the font that has been selected
+                font: '16px Arial',
+                onsubmit: function (input) {
+                    // You can add the text input to your forms array or handle it as needed
+                    let textMeasurement = measureTextUsingDOM(input.text, input.font);
+                    let newForm = new Text(generateFormId(), { x: input.x, y: input.y }, input.text, textMeasurement.width, textMeasurement.height, 0, 'Arial', 16, 'black', false, 'text');
+                    forms.push(newForm);
+                    resetVariables();
+                    updateSelection(newForm);
+                    selectionMode = true;
+                }
+            });
+        }
+
+        function handleTriangleCreation(point) {
+            let distance = calculateDistanceBetweenPoints(originCreation, point);
+            let firstPoint = { x: originCreation.x, y: originCreation.y-distance };
+            let secondPoint = rotatePoint(originCreation.x, originCreation.y, firstPoint.x, firstPoint.y, 120);
+            let thirdPoint = rotatePoint(originCreation.x, originCreation.y, secondPoint.x, secondPoint.y, 120);
+
+            let points = [firstPoint, secondPoint, thirdPoint];
+
+            forms = forms.filter(form => form.inMotion === false);
+            forms.push(new Form(null, points, null, null, null, true, 'poly'));
+        }
+
+        function handleLineCreation(point) {
+            let points = [{ x: originCreation.x, y: originCreation.y }, { x: point.x, y: point.y }]
+            forms = forms.filter(form => form.inMotion === false);
+            forms.push(new Form(null, points, null, null, null, true, 'poly'));
+        }
+
+
+        function handleCircleCreation(point){
+            let distance = calculateDistanceBetweenPoints(originCreation, point);
+            forms = forms.filter(form => form.inMotion === false);
+            forms.push(new Ellipse(null, originCreation, distance, distance, 0, null, null, null, true, 'ellipse'));
+        }
+
+        function handleRectangleCreation(point) {
+            let points = [{ x: originCreation.x, y: originCreation.y }, { x: point.x, y: originCreation.y }, { x: point.x, y: point.y }, { x: originCreation.x, y: point.y }]
+            forms = forms.filter(form => form.inMotion === false);
             forms.push(new Form(null, points, null, null, null, true, 'poly'));
         }
 
@@ -273,12 +336,17 @@
 
         }
 
-        function handleCreationMode(event){
-            if(creationMode){
+        function handleCreationMode(event) {
+            if (creationMode) {
                 const { offsetX, offsetY } = event;
-                creating=true;
-                originCreation = {x: offsetX, y: offsetY};
+                originCreation = { x: offsetX, y: offsetY };
+
+                if(creationType==='text' && creating==false){
+                handleTextCreation(originCreation);
             }
+                creating = true;
+            }
+
         }
 
         function handleFreeDrawingMode(event) {
@@ -518,6 +586,13 @@
             drawForms();
             drawSelection();
             drawFreeDrawingPoints();
+            drawTextInput();
+        }
+
+        function drawTextInput(){
+            if(textInput!==undefined){
+                textInput.draw();
+            }
         }
 
         function drawForms() {
@@ -840,6 +915,7 @@
 
 
         function resetVariables() {
+            textInput = undefined;
             rotatingForm = false;
             translatingForm = false;
             movingPoint = false;
@@ -857,17 +933,17 @@
             forms = forms.filter(form => form.id !== 'selection' && form.id !== 'selectionCenter' && form.id !== 'selectionPoint');
         }
 
-        function resetTextFormParameters(form){
+        function resetTextFormParameters(form) {
             let textMeasurement = measureTextUsingDOM(form.content, form.size + 'px ' + form.font);
-                form.a=textMeasurement.width;
-                form.b=textMeasurement.height;
+            form.a = textMeasurement.width;
+            form.b = textMeasurement.height;
         }
 
         function handleIncreaseScaleButton(event) {
             if (selectedForm != undefined) {
                 scaleForm(selectedForm, 1.10);
             }
-            if(selectedForm.type==='text'){
+            if (selectedForm.type === 'text') {
                 resetTextFormParameters(selectedForm);
             }
             updateSelection(selectedForm);
@@ -877,7 +953,7 @@
             if (selectedForm != undefined) {
                 scaleForm(selectedForm, 0.90);
             }
-            if(selectedForm.type==='text'){
+            if (selectedForm.type === 'text') {
                 resetTextFormParameters(selectedForm);
             }
             updateSelection(selectedForm);
@@ -897,13 +973,21 @@
             }
         }
 
-        function handleCreationModeButton(event){
+        function handleCreationModeButton(event) {
             if (creationMode === false) {
                 resetVariables();
                 creationMode = true;
                 const buttonId = event.srcElement.id;
                 if (buttonId === 'createRectangle') {
                     creationType = 'rect';
+                } else if (buttonId === 'createText') {
+                    creationType = 'text';
+                } else if (buttonId === 'createCircle') {
+                    creationType = 'circle';
+                }  else if (buttonId === 'createLine') {
+                    creationType = 'line';
+                } else if (buttonId === 'createTriangle') {
+                    creationType = 'triangle';
                 }
             }
 
@@ -921,6 +1005,12 @@
         document.getElementById('selectionMode').addEventListener('mousedown', handleSelectionModeButton);
 
         document.getElementById('createRectangle').addEventListener('mousedown', handleCreationModeButton);
+        document.getElementById('createCircle').addEventListener('mousedown', handleCreationModeButton);
+        document.getElementById('createLine').addEventListener('mousedown', handleCreationModeButton);
+
+        document.getElementById('createText').addEventListener('mousedown', handleCreationModeButton);
+        document.getElementById('createTriangle').addEventListener('mousedown', handleCreationModeButton);
+
 
         // this part is for tests
 
