@@ -13,7 +13,7 @@
     <h1>Paint</h1>
     <br>
     <div id="dashboardPanel">
-       
+
         <div class="menu-text">Selection :</div> <!-- Add text here -->
 
         <button class="menu-button" id="selectionMode">
@@ -537,7 +537,11 @@
         function isPointInEllipse(x, y, form) {
             let relativeX = x - form.points[0].x;
             let relativeY = y - form.points[0].y;
-            return Math.pow(relativeX, 2) / Math.pow(form.a, 2) + Math.pow(relativeY, 2) / Math.pow(form.b, 2) <= 1;
+            // Rotate the point by -angle (to undo the rotation of the ellipse)
+            let rotatedX = relativeX * Math.cos(-form.angle) - relativeY * Math.sin(-form.angle);
+            let rotatedY = relativeX * Math.sin(-form.angle) + relativeY * Math.cos(-form.angle);
+
+            return Math.pow(rotatedX, 2) / Math.pow(form.a, 2) + Math.pow(rotatedY, 2) / Math.pow(form.b, 2) <= 1;
         }
 
         // Function to detect if a point is within a form (polygon)
