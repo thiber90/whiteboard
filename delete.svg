@@ -1,0 +1,10 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Trash Can Body (Made Wider and Taller) -->
+  <rect x="10" y="12" width="12" height="12" stroke="#87CEFA" stroke-width="3" fill="none"/>
+  
+  <!-- Trash Can Lid (Extended to Match New Width) -->
+  <path d="M9 12H23" stroke="#87CEFA" stroke-width="3" stroke-linecap="round"/>
+  
+  <!-- Handle (Kept Same for Proportion) -->
+  <path d="M14 9H18" stroke="#87CEFA" stroke-width="3" stroke-linecap="round"/>
+</svg>
